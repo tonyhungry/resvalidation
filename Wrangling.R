@@ -1,219 +1,35 @@
-# Data Wrangling and Exploration
+# EM-DAT Wrangling
 
 library(tidyverse)
-library(readxl)
 
-data <- read_excel("EM-DAT data.xlsx")
+# First try to identify which NUTS region it is.
+# Eurostat NUTS table: https://ec.europa.eu/eurostat/documents/345175/629341/NUTS2021-NUTS2024.xlsx/2b35915f-9c14-6841-8197-353408c4522d?t=1717505289640
 
-# 
-# Insured Damage
-insured = data %>% filter(!is.na(`Insured Damage, Adjusted ('000 US$)`))
+geo_hazard <- read_excel("EM-DAT data.xlsx")
+nuts2024 = read.csv
 
-summed = insured %>% group_by(`End Year`) %>% summarize(insureddam = sum(`Insured Damage, Adjusted ('000 US$)`)) %>% rename(year = `End Year`) %>% mutate(logins = log(insureddam))
+colnames(geo_hazard) = tolower(colnames(geo_hazard))
+colnames(nuts2024) = tolower(colnames(nuts2024))
 
-ggplot(summed, aes(x = factor(year), y = insureddam)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Insured Damage in 1000 USD (adjusted) by Year",
-    x = "Year",
-    y = "Insured Damage in 1000 USD (adjusted)") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+# Create a function to determine the NUTS level
 
-ggplot(summed, aes(x = factor(year), y = logins)) +
-  geom_bar(stat = "identity", fill = "lightblue") +
-  labs(
-    title = "Insured Damage in 1000 USD (adjusted) by Year",
-    x = "Year",
-    y = "Log of Insured Damage in 1000 (adjusted) USD") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+get_nuts_level = function(location,nuts_data) {
+  
+  match = nuts_data %>% filter(str_detect(tolower(nuts.label),tolower(location)))
+  if (nrow(match) > 0) {
+    return(paste(unique(match$nuts.level),collapse = ", "))
+  } else {
+    return(NA)
+  }
+}
 
-## Insured damage by Subregion
-summed = insured %>% group_by(`Subregion`) %>% summarize(insureddam = sum(`Insured Damage, Adjusted ('000 US$)`)) %>% mutate(logins = log(insureddam))
-
-ggplot(summed, aes(x = factor(Subregion), y = insureddam)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Insured Damage in 1000 USD (adjusted) by Subregion",
-    x = "Subregion",
-    y = "Insured Damage in 1000 USD (adjusted)") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-ggplot(summed, aes(x = factor(Subregion), y = logins)) +
-  geom_bar(stat = "identity", fill = "lightblue") +
-  labs(
-    title = "Insured Damage in 1000 USD (adjusted) by Subregion",
-    x = "Subregion",
-    y = "Log of Insured Damage in 1000 (adjusted) USD") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-## Insured damage by Event Type
-summed = insured %>% group_by(`Disaster Type`) %>% summarize(insureddam = sum(`Insured Damage, Adjusted ('000 US$)`)) %>% mutate(logins = log(insureddam))
-
-ggplot(summed, aes(x = factor(`Disaster Type`), y = insureddam)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Insured Damage in 1000 USD (adjusted) by Disaster Type",
-    x = "Disaster Type",
-    y = "Insured Damage in 1000 USD (adjusted)") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-ggplot(summed, aes(x = factor(`Disaster Type`), y = logins)) +
-  geom_bar(stat = "identity", fill = "lightblue") +
-  labs(
-    title = "Insured Damage in 1000 USD (adjusted) by Disaster Type",
-    x = "Disaster Type",
-    y = "Log of Insured Damage in 1000 (adjusted) USD") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-# Total Damage
-total = data %>% filter(!is.na(`Total Damage, Adjusted ('000 US$)`))
-summed = total %>% group_by(`End Year`) %>% summarize(totaldam = sum(`Total Damage, Adjusted ('000 US$)`)) %>% rename(year = `End Year`) %>% mutate(logdam = log(totaldam))
-
-ggplot(summed, aes(x = factor(year), y = totaldam)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Total Damage in 1000 USD (adjusted) by Year",
-    x = "Year",
-    y = "Total Damage in 1000 USD (adjusted)") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-ggplot(summed, aes(x = factor(year), y = logdam)) +
-  geom_bar(stat = "identity", fill = "lightblue") +
-  labs(
-    title = "Total Damage in 1000 USD (adjusted) by Year",
-    x = "Year",
-    y = "Log of Total Damage in 1000 (adjusted) USD") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-## Total Damage by Subregion
-
-summed = total %>% group_by(`Subregion`) %>% summarize(totaldam = sum(`Total Damage, Adjusted ('000 US$)`)) %>% mutate(logdam = log(totaldam))
-
-ggplot(summed, aes(x = factor(Subregion), y = totaldam)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Total Damage in 1000 USD (adjusted) by Subregion",
-    x = "Subregion",
-    y = "Total Damage in 1000 USD (adjusted)") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-ggplot(summed, aes(x = factor(Subregion), y = logdam)) +
-  geom_bar(stat = "identity", fill = "lightblue") +
-  labs(
-    title = "Total Damage in 1000 USD (adjusted) by Subregion",
-    x = "Subregion",
-    y = "Log of Total Damage in 1000 (adjusted) USD") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-## Total Damage by Disaster Type
-
-summed = total %>% group_by(`Disaster Type`) %>% summarize(totaldam = sum(`Total Damage, Adjusted ('000 US$)`)) %>% mutate(logdam = log(totaldam))
-
-ggplot(summed, aes(x = factor(`Disaster Type`), y = totaldam)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Total Damage in 1000 USD (adjusted) by Disaster Type",
-    x = "Disaster Type",
-    y = "Total Damage in 1000 USD (adjusted)") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-ggplot(summed, aes(x = factor(`Disaster Type`), y = logdam)) +
-  geom_bar(stat = "identity", fill = "lightblue") +
-  labs(
-    title = "Total Damage in 1000 USD (adjusted) by Disaster Type",
-    x = "Disaster Type",
-    y = "Log of Total Damage in 1000 (adjusted) USD") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+geo_hazard = geo_hazard %>% 
+  mutate(nuts_level = sapply(location, get_nuts_level,nuts_data = nuts2024))
 
 
-# Total Affected
-
-affected = data %>% filter(!is.na(`Total Affected`))
-summed = affected %>% group_by(`End Year`) %>% summarize(totalaff = sum(`Total Affected`)) %>% rename(year = `End Year`) 
-
-ggplot(summed, aes(x = factor(year), y = totalaff)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Number of Total Affected Persons by Year",
-    x = "Year",
-    y = "Number of Total Affected Persons") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-## Total Affected by Region
-
-summed = affected %>% group_by(`Subregion`) %>% summarize(totalaff = sum(`Total Affected`))
-
-ggplot(summed, aes(x = factor(Subregion), y = totalaff)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Number of Total Affected Persons by Subregion",
-    x = "Subregion",
-    y = "Number of Total Affected Persons") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-## Total Affected by Disaster Type
-
-summed = affected %>% group_by(`Disaster Type`) %>% summarize(totalaff = sum(`Total Affected`))
-
-ggplot(summed, aes(x = factor(`Disaster Type`), y = totalaff)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Number of Total Affected Persons by Disaster Type",
-    x = "Disaster Type",
-    y = "Number of Total Affected Persons") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-# Total deaths
-
-deaths = data %>% filter(!is.na(`Total Deaths`))
-summed = deaths %>% group_by(`End Year`) %>% summarize(totaldea = sum(`Total Deaths`)) %>% rename(year = `End Year`) 
-
-ggplot(summed, aes(x = factor(year), y = totaldea)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Number of Total Deaths by Year",
-    x = "Year",
-    y = "Number of Total Deaths") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-## Total Deaths by Subregion
-
-summed = deaths %>% group_by(`Subregion`) %>% summarize(totaldea = sum(`Total Deaths`))
-
-ggplot(summed, aes(x = factor(Subregion), y = totaldea)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Number of Total Deaths by Subregion",
-    x = "Subregion",
-    y = "Number of Total Deaths") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-## Total Deaths by Disaster Type
-
-summed = deaths %>% group_by(`Disaster Type`) %>% summarize(totaldea = sum(`Total Deaths`))
-
-ggplot(summed, aes(x = factor(`Disaster Type`), y = totaldea)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
-  labs(
-    title = "Number of Total Deaths by Disaster Type",
-    x = "Disaster Type",
-    y = "Number of Total Deaths") +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+# This doesn't work...
+# Will probably have to first filter out the unnecessary countries
+# And then make location column into a list
+# And then identify if it is nuts 2 or nuts 3
+# From there then we can decide what's the best... 
+# Oooh! and use the eurostat package to source all of the necessary data (should probably identify which tables I want first as well...)

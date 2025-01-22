@@ -53,3 +53,4 @@ rsconnect/
 *.xlsx
 
 .DS_Store
+*.csv
