@@ -25,7 +25,6 @@ location_data = fil_geo %>%
 nuts_data <- countries %>% 
   mutate(nuts_region = `NUTS label` %>% stri_trans_general("Latin-ASCII") %>% str_to_lower())
 
-# Function to do fuzzy matching between 
 location_data <- location_data %>% 
   mutate(location = stri_trans_general(location, "Latin-ASCII") %>% str_to_lower())
 
@@ -34,7 +33,6 @@ nuts_data <- nuts_data %>%
 
 # Function for fuzzy matching within ISO country code
 match_nuts <- function(location, country_iso, nuts_df, threshold = 0.3) {
-  # Explicitly reference `ISO Code` in `nuts_df`
   filtered_nuts <- nuts_df %>%
     filter(`ISO Code` == country_iso)  # Match only within the same ISO
   
@@ -71,11 +69,80 @@ match_nuts <- function(location, country_iso, nuts_df, threshold = 0.3) {
 # Applying the function
 expanded_location_data <- location_data %>%
   mutate(row_id = row_number()) %>%  # Create a unique identifier before expanding
+  mutate(location = str_replace_all(location, "\\(([^)]*),([^)]*)\\)", "(\\1 \\2)"),  # Remove commas within parentheses
+         location = str_replace_all(location, "\\((.*?)\\)", " \\1"),  # Remove parentheses but keep text
+         location = str_replace_all(location, ",(\\S)", ", \\1"))  %>% # Ensure space after commas 
   separate_rows(location, sep = ", ") %>%  # Split locations into separate rows
   mutate(match_result = map2(location, ISO, ~match_nuts(.x, .y, nuts_data))) %>%  # Match only within the same ISO
   unnest(match_result) %>%  # Unnest the tibble results properly
   arrange(row_id) %>%  # Ensure correct ordering
   select(-row_id)  # Remove temporary identifier
+
+
+# Geo-location identification ####
+library(httr)
+library(jsonlite)
+
+# Function to get latitude & longitude from location
+geocode_location <- function(location, cache = NULL) {
+  # Check cache first
+  if (!is.null(cache) && location %in% cache$location) {
+    return(cache %>% filter(location == !!location) %>% select(latitude, longitude))
+  }
+  
+  # API call
+  base_url <- "https://nominatim.openstreetmap.org/search"
+  response <- GET(base_url, query = list(q = location, format = "json", limit = 1))
+  data <- content(response, as = "text", encoding = "UTF-8") %>% fromJSON()
+  
+  # Handle missing results
+  if (length(data) == 0) {
+    return(tibble(latitude = NA, longitude = NA))
+  }
+  
+  # Extract and return result
+  result <- tibble(location = location, 
+                   latitude = as.numeric(data$lat[1]), 
+                   longitude = as.numeric(data$lon[1]))
+  
+  # Slow down requests to avoid API blocking
+  Sys.sleep(1)
+  
+  return(result)
+}
+
+# Create an empty cache
+cache <- tibble(location = character(), latitude = numeric(), longitude = numeric())
+
+# Apply the function
+expanded_location_data <- location_data %>%
+  mutate(row_id = row_number()) %>%  # Create a unique identifier before expanding
+  mutate(location = str_replace_all(location, "\\(([^)]*),([^)]*)\\)", "(\\1 \\2)"),  # Remove commas within parentheses
+         location = str_replace_all(location, "\\((.*?)\\)", " \\1"),  # Remove parentheses but keep text
+         location = str_replace_all(location, ",(\\S)", ", \\1"))  %>% # Ensure space after commas 
+  separate_rows(location, sep = ", ") %>%  # Split locations into separate rows
+  mutate(geo_data = map(location, ~geocode_location(.x, cache))) %>%  # Geocode
+  mutate(geo_data = map(geo_data, ~rename_with(.x, ~paste0("geo_", .)))) %>%  # Rename columns before unnesting
+  unnest(geo_data) %>%  # Unnest the tibble results properly
+  arrange(row_id) %>%  # Ensure correct ordering
+  select(-row_id)  # Remove temporary identifier
+
+library(sf)
+nuts3_polygons <- st_read("NUTS3.geojson") %>% filter(LEVL_CODE == 3)
+
+# Bulk Matching
+expanded_location_data = expanded_location_data %>% filter(!is.na(geo_latitude))
+# Convert geocoded locations into spatial points
+location_points <- st_as_sf(expanded_location_data, coords = c("geo_longitude", "geo_latitude"), crs = 4326)
+# Perform spatial join to find NUTS3 region for each coordinate
+matched_data <- st_join(location_points, nuts3_polygons, join = st_within)
+# View matched results
+matched_data %>% select(location, geometry, NUTS_ID, NUTS_NAME)
+
+matched_data %>% summarise(na_count = sum(is.na(NUTS_ID))) #NA count of 178
+
+
+
 
 
 
@@ -117,7 +184,9 @@ geo_hazard = geo_hazard %>%
 
 # This doesn't work...
 # Will probably have to first filter out the unnecessary countries - Done
-# And then make location column into a list
 # And then identify if it is nuts 2 or nuts 3 - Done
+# 
+
+
 # From there then we can decide what's the best... 
 # Oooh! and use the eurostat package to source all of the necessary data (should probably identify which tables I want first as well...)
