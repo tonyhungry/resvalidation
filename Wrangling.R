@@ -18,8 +18,17 @@ countrycodes = c("BEL", "BGR", "CZE", "DNK", "DEU", "EST", "IRL", "GRC", "ESP", 
                  "ITA", "CYP", "LVA", "LTU", "LUX", "HUN", "MLT", "NLD", "AUT", "POL", "PRT", 
                  "ROU", "SVN", "SVK", "FIN", "SWE")
 
+BNL = c("BEL","NLD","LUX")
+
 # Filter out countries that are not in the EU27 and deselect columns we don't need
-fil_geo = geo_hazard %>% filter(ISO %in% countrycodes) %>% select(-Historic,-`Classification Key`,-`Disaster Group`,-`Disaster Subtype`,-`External IDs`,-`Event Name`,-Subregion,-Region,-Origin,-`Associated Types`,-`OFDA/BHA Response`,-Appeal,-Declaration,-`AID Contribution ('000 US$)`,-Latitude,-Longitude,-`River Basin`,-CPI,-`Admin Units`,-`Entry Date`,-`Last Update`) %>% filter(!is.na(Location))
+fil_geo = geo_hazard %>% 
+  filter(ISO %in% countrycodes) %>% # Filter for EU27 Countries
+  select(-Historic,-`Classification Key`,-`Disaster Group`,-`Disaster Subtype`,-`External IDs`,-`Event Name`,-Subregion,-Region,-Origin,-`Associated Types`,-`OFDA/BHA Response`,-Appeal,-Declaration,-`AID Contribution ('000 US$)`,-Latitude,-Longitude,-`River Basin`,-CPI,-`Admin Units`,-`Entry Date`,-`Last Update`) %>% # Take out columns that are not needed
+  filter(!is.na(Location)) %>%  # filter out entries with no location information
+  filter(!is.na(value)) # filter out entries with no 
+
+# Make an empty cache
+cache <- tibble(location = character(), latitude = numeric(), longitude = numeric())
 
 # Function to geocode location with cache check
 geocode_location <- function(location, cache) {
@@ -44,8 +53,10 @@ geocode_location <- function(location, cache) {
 unique_locations <- fil_geo %>%
   pull(Location) %>%
   str_replace_all(",\\s*", ", ") %>%                # Ensure consistent spacing after commas
-  str_remove_all("\\sprovinces") %>%                # Remove unwanted words like 'provinces'
-  str_replace_all("\\(([^)]+)\\)", " \\1") %>%      # Remove parentheses but keep content inside
+  str_remove_all("\\sprovinces?\\b") %>%            # Remove 'province' or 'provinces' (handles both singular & plural)
+  str_remove_all("\\scity\\b") %>%                  # Remove 'city'
+  str_remove_all("\\stown\\b") %>%                  # Remove 'town'
+  str_remove_all("\\s*\\([^)]*\\)") %>%             # ✅ Remove contents within parentheses (with parentheses)
   str_split(",\\s*(?=[^)]*$)") %>%                  # Split locations at commas NOT inside parentheses
   unlist() %>%                                       # Flatten into a vector
   str_trim() %>%                                     # Remove any trailing spaces
@@ -61,6 +72,9 @@ progressr::with_progress({
     geocode_location(loc, cache)
   })
 })
+end_time <- Sys.time()
+execution_time <- end_time - start_time
+print(execution_time)
 
 # Pre-process the 'Location' column in fil_geo
 fil_geo_clean <- fil_geo %>%
