@@ -184,13 +184,199 @@ area_data <- get_eurostat("demo_r_d3area", time_format = "num") %>%
   distinct(NUTS_ID, .keep_all = TRUE)
 
 # Preparing Data for K-Means Cluster####
-# I need Exposure, Damage and Population Growth
+# I need Exposure, Damage and Population Growth data to do the K-Means Cluster
 
 ## Exposure ####
-# Calculated as normalized exposure = sum(hazard events) / (population/area)
+# Calculated as normalized exposure = sum(hazard events) / (population/area) = 
+# This is equal to sum(hazard events) / population density
+# Hazard event per NUTS2 region
+
+# Calculate population density per region per year
+pop_density <- pop_data %>%
+  left_join(area_data, by = "NUTS_ID") %>%
+  mutate(pop_density = population / area_km2) %>%
+  filter(!is.na(pop_density))
+
+# Count hazard events per region per year
+hazard_counts <- fil_geo_with_nuts3 %>%
+  filter(!is.na(NUTS_ID)) %>%
+  group_by(NUTS_ID, `Start Year`) %>%
+  select(TIME_PERIOD = `Start Year`) %>% 
+  summarise(event_count = n(), .groups = "drop")
+
+# Merge the two datasets
+exposure_data <- hazard_counts %>%
+  left_join(pop_density, by = c("NUTS_ID", "TIME_PERIOD"))  # TIME_PERIOD = year
+
+# Calculate the normalized index by region 
+exposure_data <- exposure_data %>%
+  mutate(exposure_index = event_count / pop_density)
+
+final_exposure_index <- exposure_data %>%
+  group_by(NUTS_ID) %>%
+  summarise(
+    exposure_index_avg = mean(exposure_index, na.rm = TRUE),
+    .groups = "drop"
+  ) %>% 
+  filter(!is.na(exposure_index_avg)) %>% 
+  filter(substr(NUTS_ID, 1, 2) %in% c("BE", "NL", "LU")) # This means there are some problems with geocoding... should work on that. I think also adding the ISO code into the search would make it better.
 
 ## Damage ####
-# Calculated as 
+# Calculated as the sum of the damage from each event divided by the population.
+# Since the data is incomplete, thus I have made an index based on the available data, which are all normalized first. 
+# Need to do this per event and then later divide it by
+
+damage_raw <- fil_geo %>%
+  select(
+    DisNo.,
+    deaths = `Total Deaths`,
+    affected = `Total Affected`,
+    insured_damage = `Insured Damage, Adjusted ('000 US$)`,
+    total_damage = `Total Damage, Adjusted ('000 US$)`
+  )
+
+damage_norm <- damage_raw %>%
+  mutate(across(c(deaths, affected, insured_damage, total_damage), 
+                ~ (. - min(., na.rm = TRUE)) / (max(., na.rm = TRUE) - min(., na.rm = TRUE)),
+                .names = "norm_{.col}"))
+
+damage_index <- damage_norm %>%
+  mutate(damage_index = rowMeans(select(., starts_with("norm_")), na.rm = TRUE)) %>%
+  select(DisNo., damage_index)
+
+pop_data <- pop_data %>%
+  rename(year = TIME_PERIOD)
+
+damagePC <- fil_geo_with_nuts3 %>%
+  left_join(damage_index, by = "DisNo.") %>% 
+  rename(year = `Start Year`) %>% 
+  left_join(pop_data, by = c("NUTS_ID", "year")) %>% 
+  st_drop_geometry() %>% 
+  select(DisNo., NUTS_ID, NUTS_NAME,damage_index,population,year) %>% 
+  mutate(damage_per_capita = damage_index / population)
+
+avg_damage_per_capita <- damagePC %>%
+  group_by(NUTS_ID) %>%
+  summarise(
+    avg_damage_per_capita = mean(damage_per_capita, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+## Population Growth ####
+# Find the population growth rate between 2002 and 2024.
+pop_growth <- pop_data %>%
+  filter(year %in% c(2002, 2022)) %>%
+  select(NUTS_ID, year, population) %>%
+  pivot_wider(names_from = year, values_from = population, names_prefix = "pop_") %>%
+  mutate(
+    growth_abs = pop_2022 - pop_2002,
+    growth_pct = (pop_2022 - pop_2002) / pop_2002
+  ) %>% 
+  select(NUTS_ID, growth_pct)
+
+
+# K-Means Cluster ####
+
+# Consolidate the data
+kmclusdata = final_exposure_index %>% 
+  left_join(avg_damage_per_capita, by = "NUTS_ID") %>% 
+  left_join(pop_growth, by = "NUTS_ID") %>% 
+  filter(!is.na(avg_damage_per_capita), !is.nan(avg_damage_per_capita))
+
+# Scale all of the variables before running K-Means Cluster
+km_data <- kmclusdata %>%
+  select(exposure_index_avg, avg_damage_per_capita, growth_pct) %>%
+  scale()
+
+# Use the elbow method to find the optimal K
+library(factoextra)
+fviz_nbclust(km_data, kmeans, method = "wss") +
+  labs(title = "Elbow Method for Optimal k")
+# It seems like there are 2/3/4 clusters
+
+# Use the silhouette method 
+fviz_nbclust(km_data, kmeans, method = "silhouette") +
+  labs(title = "Silhouette Method for Optimal k")
+# Suggests that there are 2 clusters
+
+set.seed(123) # for reproducibility purposes
+
+kmeans_result <- kmeans(km_data, centers = 2, nstart = 25)
+
+# Add cluster labels back to original data
+kmclusdata <- kmclusdata %>%
+  mutate(cluster = kmeans_result$cluster)
+
+# Preparing Data for discriminant analysis ####
+# Connecting to Global Data Lab
+# This doesn't work at all... Don't know why.
+# library(gdldata)
+# sess <- gdl_session("VINlE70ywx1PqFjByfX5LicWjaxTLeQvfabbpujivpA")
+# gdl_indicators(session)
+# 
+# 
+# session <- gdl_session(Sys.getenv('wFg1lDC0v5-60klXWw77wt0f8arOU3TjW0v0Q4QWY3I'))
+# gdlindicators <- gdl_indicators(session)
+hdi <- read.csv("~/Downloads/GDL-Subnational-HDI-data.csv")
+hdi2022 = hdi %>% filter(Country %in% c("Belgium","Netherlands",""))
+# Doesn't have Luxembourg so skipping that for now...
+
+# Getting data from Eurostat
+pop_density_data <- get_eurostat("tgs00024", time_format = "num") %>%
+  rename(NUTS_ID = geo, year = TIME_PERIOD, pop_density = values) %>%
+  filter(!is.na(pop_density)) %>% 
+  filter(year == 2022) %>% 
+  select(NUTS_ID,pop_density)
+internet_access <- get_eurostat("tgs00047", time_format = "num") %>%
+  rename(NUTS_ID = geo, year = TIME_PERIOD, internet_access_pct = values) %>%
+  filter(!is.na(internet_access_pct)) %>% 
+  filter(year == 2024) %>% 
+  select(NUTS_ID,internet_access_pct)
+poverty_rate <- get_eurostat("tgs00103", time_format = "num") %>%
+  rename(NUTS_ID = geo, year = TIME_PERIOD, poverty_pct = values) %>%
+  filter(!is.na(poverty_pct)) %>% 
+  filter(year == 2021) %>% 
+  select(NUTS_ID,poverty_pct)
+road_density <- get_eurostat("tran_r_net", time_format = "num") %>%
+  rename(NUTS_ID = geo, year = TIME_PERIOD, road_density_km = values) %>%
+  filter(!is.na(road_density_km)) %>% 
+  filter(tra_infr == "MWAY") %>% 
+  filter(unit == "KM_TKM2") %>% 
+  filter(year == 2022) %>% 
+  select(NUTS_ID,road_density_km)
+gini <- get_eurostat("ilc_di11_r", time_format = "num") %>%
+  filter(TIME_PERIOD == 2024) %>%
+  select(NUTS_ID = geo, year = TIME_PERIOD, gini_coeff = values)
+
+resilience_vars <- pop_density_data %>%
+  left_join(internet_access, by = c("NUTS_ID")) %>%
+  left_join(poverty_rate, by = c("NUTS_ID")) %>%
+  left_join(road_density, by = c("NUTS_ID"))
+
+discdata = kmclusdata %>% 
+  select(NUTS_ID,cluster) %>% 
+  left_join(resilience_vars,by = "NUTS_ID") %>% 
+  mutate(poverty_pct = if_else(NUTS_ID == "LU00", 18.8, poverty_pct))
+
+# Discriminant Analysis ####
+library(MASS)
+
+lda_model <- lda(cluster ~ pop_density + internet_access_pct + poverty_pct + road_density_km, data = discdata)
+lda_pred <- predict(lda_model)
+discdata <- discdata %>% mutate(predicted_cluster = lda_pred$class)
+table(Actual = discdata$cluster, Predicted = discdata$predicted_cluster)
+
+# Overall accuracy
+# (14 + 2) / (14 + 1 + 2 + 2) = 84.2%
+
+discdata$LD1 <- lda_pred$x[,1]
+ggplot(discdata, aes(x = LD1, fill = factor(cluster))) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 15) +
+  labs(title = "LDA Separation by Cluster", x = "LD1", fill = "Cluster") +
+  theme_minimal()
+
+lda_model$scaling
+
 
 
 # Maybe Codes ####
