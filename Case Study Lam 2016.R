@@ -308,18 +308,6 @@ kmclusdata <- kmclusdata %>%
   mutate(cluster = kmeans_result$cluster)
 
 # Preparing Data for discriminant analysis ####
-# Connecting to Global Data Lab
-# This doesn't work at all... Don't know why.
-# library(gdldata)
-# sess <- gdl_session("VINlE70ywx1PqFjByfX5LicWjaxTLeQvfabbpujivpA")
-# gdl_indicators(session)
-# 
-# 
-# session <- gdl_session(Sys.getenv('wFg1lDC0v5-60klXWw77wt0f8arOU3TjW0v0Q4QWY3I'))
-# gdlindicators <- gdl_indicators(session)
-hdi <- read.csv("~/Downloads/GDL-Subnational-HDI-data.csv")
-hdi2022 = hdi %>% filter(Country %in% c("Belgium","Netherlands",""))
-# Doesn't have Luxembourg so skipping that for now...
 
 # Getting data from Eurostat
 pop_density_data <- get_eurostat("tgs00024", time_format = "num") %>%
@@ -345,13 +333,19 @@ road_density <- get_eurostat("tran_r_net", time_format = "num") %>%
   filter(year == 2022) %>% 
   select(NUTS_ID,road_density_km)
 gini <- get_eurostat("ilc_di11_r", time_format = "num") %>%
-  filter(TIME_PERIOD == 2024) %>%
-  select(NUTS_ID = geo, year = TIME_PERIOD, gini_coeff = values)
+  filter(TIME_PERIOD == 2021) %>%
+  rename(NUTS_ID = geo, year = TIME_PERIOD, gini_coeff = values) %>% 
+  select(NUTS_ID, year, gini_coeff)
+# gini doesn't work for Belgium because of incomplete data.
+
+benelux_hdi_2022 <- read.csv("~/Documents/Resilience Validation/benelux_hdi_2022.csv")
 
 resilience_vars <- pop_density_data %>%
   left_join(internet_access, by = c("NUTS_ID")) %>%
   left_join(poverty_rate, by = c("NUTS_ID")) %>%
-  left_join(road_density, by = c("NUTS_ID"))
+  left_join(road_density, by = c("NUTS_ID")) %>% 
+  left_join(gini, by = c("NUTS_ID")) %>% 
+  left_join(benelux_hdi_2022, by = c("NUTS_ID"))
 
 discdata = kmclusdata %>% 
   select(NUTS_ID,cluster) %>% 
@@ -359,9 +353,9 @@ discdata = kmclusdata %>%
   mutate(poverty_pct = if_else(NUTS_ID == "LU00", 18.8, poverty_pct))
 
 # Discriminant Analysis ####
-library(MASS)
 
-lda_model <- lda(cluster ~ pop_density + internet_access_pct + poverty_pct + road_density_km, data = discdata)
+# Without gini coefficient
+lda_model <- MASS::lda(cluster ~ pop_density + internet_access_pct + poverty_pct + road_density_km  + shdi_score, data = discdata)
 lda_pred <- predict(lda_model)
 discdata <- discdata %>% mutate(predicted_cluster = lda_pred$class)
 table(Actual = discdata$cluster, Predicted = discdata$predicted_cluster)
