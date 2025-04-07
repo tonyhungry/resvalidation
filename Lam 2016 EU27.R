@@ -1,4 +1,4 @@
-# Case Study using RIM (Lam 2015/2016) for Benelux countries 
+# Case Study using RIM (Lam 2015/2016) for European countries 
 # Adapted the 2015 study with the data that I have. 
 
 # Packages that are needed
@@ -14,14 +14,17 @@ library(progressr)
 # Load in EM-DAT dataset
 geo_hazard <- readxl::read_excel("EM-DAT data.xlsx")
 
-# Benelux countries (Belgium, Netherlands, Luxembourg)
-BNL = c("BEL","NLD","LUX")
+# EU27 Countries
+EU27 = c("BEL", "BGR", "CZE", "DNK", "DEU", "EST", "IRL", "GRC", "ESP", "FRA", "HRV", 
+                 "ITA", "CYP", "LVA", "LTU", "LUX", "HUN", "MLT", "NLD", "AUT", "POL", "PRT", 
+                 "ROU", "SVN", "SVK", "FIN", "SWE")
 
 # Filter out countries that are not in the EU27 and deselect columns we don't need
 fil_geo = geo_hazard %>% 
-  filter(ISO %in% BNL) %>% # Filter for BNL countries
+  filter(ISO %in% EU27) %>% # Filter for BNL countries
   select(-Historic,-`Classification Key`,-`Disaster Group`,-`Disaster Subtype`,-`External IDs`,-`Event Name`,-Subregion,-Region,-Origin,-`Associated Types`,-`OFDA/BHA Response`,-Appeal,-Declaration,-`AID Contribution ('000 US$)`,-Latitude,-Longitude,-`River Basin`,-CPI,-`Admin Units`,-`Entry Date`,-`Last Update`) %>% # Take out columns that are not needed
-  filter(!is.na(Location))  # filter out entries with no location information
+  filter(!is.na(Location))  %>% # filter out entries with no location information
+  mutate(ISO2 = countrycode::countrycode(ISO, origin = 'iso3c', destination = 'iso2c'))
 
 # fil_geo = fil_geo %>% filter(!is.na(?)) # filter out entries for specific columns
 
@@ -62,26 +65,41 @@ geocode_location <- function(location, cache) {
 
 # Pre-process the location vector 
 unique_locations <- fil_geo %>%
-  pull(Location) %>%
-  str_replace_all(",\\s*", ", ") %>%                # Ensure consistent spacing after commas
-  str_replace_all(";/", ", ") %>%                   # handle separators like ";" and "/"
-  str_replace_all(";", ", ") %>%                    # Split entries on ";"
-  str_replace_all("/", ", ") %>%                    # Split entries on "/"
-  str_replace_all("Zuit-holland", "Zuid-Holland") %>%
-  str_replace_all("South Holland", "Zuid-Holland") %>%
-  str_replace_all("Hal", "Halle BE") %>%
-  str_remove_all("\\sprovinces?\\b") %>%            # Remove 'province' or 'provinces'
-  str_remove_all("\\scities\\b") %>%                # Remove 'cities'
-  str_remove_all("\\scity\\b") %>%                  # Remove 'city'
-  str_remove_all("\\stown\\b") %>%                  # Remove 'town'
-  str_remove_all("\\sand\\b") %>%                   # Remove 'and'
-  str_remove_all("\\sdistrict\\b") %>%                    # Remove 'district'
-  str_remove_all("\\s*\\([^)]*\\)") %>%             # Remove contents inside parentheses
-  str_remove_all("\\svillage\\b") %>%
-  str_split(",\\s*") %>%                            # Split on all commas (after cleaning)
-  unlist() %>% 
-  str_trim() %>%
-  unique()
+  select(Location, ISO2) %>%
+  mutate(
+    # Standardize separators
+    Location = str_replace_all(Location, ",\\s*", ", "),
+    Location = str_replace_all(Location, ";/", ", "),
+    Location = str_replace_all(Location, ";", ", "),
+    Location = str_replace_all(Location, "/", ", "),
+    
+    # Common misspellings or local inconsistencies
+    Location = str_replace_all(Location, "Zuit-holland", "Zuid-Holland"),
+    Location = str_replace_all(Location, "South Holland", "Zuid-Holland"),
+    Location = str_replace_all(Location, "\\bGroninge\\b", "Groningen"),
+    Location = str_replace_all(Location, "Totterdam", "Rotterdam"),
+    Location = str_replace_all(Location, "Westhoerk", "Westhoek"),
+    Location = str_replace_all(Location, "Hal", "Halle"),
+    
+    # Remove descriptive or irrelevant suffixes
+    Location = str_remove_all(Location, "\\sprovinces?\\b"),
+    Location = str_remove_all(Location, "\\sarea\\b"),
+    Location = str_remove_all(Location, "\\scities\\b"),
+    Location = str_remove_all(Location, "\\scity\\b"),
+    Location = str_remove_all(Location, "\\stown\\b"),
+    Location = str_remove_all(Location, "\\svillage\\b"),
+    Location = str_remove_all(Location, "\\sand\\b"),
+    Location = str_remove_all(Location, "\\sdistrict\\b"),
+    Location = str_remove_all(Location, "\\sHoofdtedelijk Gewes\\b"),
+    Location = str_remove_all(Location, "\\s*\\([^)]*\\)")  # remove parentheses and content
+  ) %>%
+  separate_rows(Location, sep = ",\\s*") %>%
+  mutate(
+    Location = str_trim(Location),
+    Location = paste(Location, ISO2)  # 💥 Append country code to location
+  ) %>%
+  distinct(Location) %>%
+  pull(Location)
 
 # Make an empty cache
 cache <- tibble(location = character(), latitude = numeric(), longitude = numeric())
@@ -110,17 +128,25 @@ fil_geo_clean <- fil_geo %>%
            str_replace_all("/", ", ") %>%                    # Split entries on "/"
            str_replace_all("Zuit-holland", "Zuid-Holland") %>%
            str_replace_all("South Holland", "Zuid-Holland") %>%
-           str_replace_all("Hal", "Halle BE") %>%
-           str_remove_all("\\sprovinces?\\b") %>%             # Remove 'province' or 'provinces'
-           str_remove_all("\\scities\\b") %>%                 # Remove 'cities'
-           str_remove_all("\\scity\\b") %>%                   # Remove 'city'
-           str_remove_all("\\stown\\b") %>%                   # Remove 'town'
-           str_remove_all("\\svillage\\b") %>%            # Remove 'village'
-           str_remove_all("\\sand\\b") %>%                    # Remove 'and'
-           str_remove_all("\\sdistrict\\b") %>%                    # Remove 'district'
-           str_remove_all("\\s*\\([^)]*\\)")) %>%             # Remove text inside parentheses
+           str_replace_all("\\bGroninge\\b", "Groningen") %>%
+           str_replace_all("Totterdam", "Rotterdam") %>%
+           str_replace_all("Westhoerk", "Westhoek") %>%
+           str_replace_all("\\bHal\\b", "Halle") %>%
+           str_remove_all("\\sprovinces?\\b") %>%
+           str_remove_all("\\sarea\\b") %>%
+           str_remove_all("\\scities\\b") %>%
+           str_remove_all("\\scity\\b") %>%
+           str_remove_all("\\stown\\b") %>%
+           str_remove_all("\\svillage\\b") %>%
+           str_remove_all("\\sand\\b") %>%
+           str_remove_all("\\sdistrict\\b") %>%
+           str_remove_all("\\sHoofdtedelijk Gewes\\b") %>%
+           str_remove_all("\\s*\\([^)]*\\)")) %>% 
   separate_rows(location, sep = ",\\s*") %>%                  # Split on all commas (after cleaning)
-  mutate(location = str_trim(location))                       # Clean up extra spaces 
+  mutate(
+    location = str_trim(location),
+    location = paste(location, ISO2)  # Final step: append ISO2
+  )
 
 # df = cbind.data.frame(unique_locations,cache)
 # colnames(df)[1] = "location"
@@ -151,7 +177,7 @@ nuts3 <- st_read("NUTS3.geojson") %>% filter(LEVL_CODE == 2)
 nuts3 <- st_transform(nuts3, crs = 4326)
 
 fil_geo_clean_sf <- fil_geo_clean %>%
-  filter(!is.na(latitude) & !is.na(longitude)) %>%  # Filter rows with coordinates
+  filter(!is.na(latitude) & !is.na(longitude)) %>%  # Filter rows without coordinates
   st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
 
 fil_geo_with_nuts3 <- st_join(fil_geo_clean_sf, nuts3, join = st_within)
@@ -159,11 +185,12 @@ fil_geo_with_nuts3 <- st_join(fil_geo_clean_sf, nuts3, join = st_within)
 # Fixing the Zeeland weirdness
 replacement_data = nuts3 %>%
   filter(NUTS_NAME == "Zeeland") %>%
-  select(location = NUTS_NAME, NUTS_ID, LEVL_CODE, CNTR_CODE, NAME_LATN) %>% 
+  mutate(NUTS_NAME = paste(NUTS_NAME, "NL")) %>%
+  select(location = NUTS_NAME, NUTS_ID, LEVL_CODE, CNTR_CODE, NAME_LATN) %>%
   st_drop_geometry()
 
 fil_geo_with_nuts3 = fil_geo_with_nuts3 %>%
-  st_drop_geometry() %>% 
+  st_drop_geometry() %>%
   rows_update(replacement_data, by = "location")
 
 # Connecting to Eurostat ####
@@ -201,7 +228,7 @@ pop_density <- pop_data %>%
 hazard_counts <- fil_geo_with_nuts3 %>%
   filter(!is.na(NUTS_ID)) %>%
   group_by(NUTS_ID, `Start Year`) %>%
-  select(TIME_PERIOD = `Start Year`) %>% 
+  rename(TIME_PERIOD = `Start Year`) %>% 
   summarise(event_count = n(), .groups = "drop")
 
 # Merge the two datasets
@@ -359,9 +386,9 @@ lda_model <- MASS::lda(cluster ~ pop_density + internet_access_pct + poverty_pct
 lda_pred <- predict(lda_model)
 discdata <- discdata %>% mutate(predicted_cluster = lda_pred$class)
 table(Actual = discdata$cluster, Predicted = discdata$predicted_cluster)
+mean(discdata$cluster == discdata$predicted_cluster)
 
-# Overall accuracy
-# (14 + 2) / (14 + 1 + 2 + 2) = 84.2%
+# Overall accuracy 86.4%
 
 discdata$LD1 <- lda_pred$x[,1]
 ggplot(discdata, aes(x = LD1, fill = factor(cluster))) +
@@ -369,19 +396,10 @@ ggplot(discdata, aes(x = LD1, fill = factor(cluster))) +
   labs(title = "LDA Separation by Cluster", x = "LD1", fill = "Cluster") +
   theme_minimal()
 
+ggplot(discdata, aes(x = LD1, fill = as.factor(cluster))) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Linear Discriminant Function (LD1)",
+       x = "LD1", fill = "Actual Cluster")
+
 lda_model$scaling
-
-
-
-# Maybe Codes ####
-# Collapse back to original structure
-final_fil_geo <- fil_geo_clean %>%
-  group_by(row_id) %>%
-  summarise(
-    Location = paste(unique(location), collapse = ", "),
-    latitude = mean(latitude, na.rm = TRUE),
-    longitude = mean(longitude, na.rm = TRUE)
-  ) %>%
-  ungroup() %>%
-  select(-row_id)
 
