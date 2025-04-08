@@ -466,7 +466,7 @@ cars = get_eurostat("tran_r_vehst", time_format = "num") %>%
 # Unemployment rate of ages 15 to 74
 unemploy = get_eurostat("tgs00010", time_format = "num") %>%
   rename(NUTS_ID = geo, year = TIME_PERIOD, unemployment = values) %>%
-  filter(year == 2023, sex == "T", isced11 == "TOTAL",) %>%
+  filter(year == 2023, sex == "T", isced11 == "TOTAL") %>%
   select(NUTS_ID, unemployment)
 
 # Employed in Agriculture, Forestry and Fisheries in 1000 persons

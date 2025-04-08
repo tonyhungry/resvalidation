@@ -1,4 +1,4 @@
-# Case Study using RIM (Lam 2015/2016) for European countries 
+# Case Study using RIM (Lam 2015/2016) for EU27 countries 
 # Adapted the 2015 study with the data that I have. 
 
 # Packages that are needed
@@ -79,24 +79,29 @@ unique_locations <- fil_geo %>%
     Location = str_replace_all(Location, "\\bGroninge\\b", "Groningen"),
     Location = str_replace_all(Location, "Totterdam", "Rotterdam"),
     Location = str_replace_all(Location, "Westhoerk", "Westhoek"),
-    Location = str_replace_all(Location, "Hal", "Halle"),
+    Location = str_replace_all(Location, "\\bHal\\b", "Halle"),
     
     # Remove descriptive or irrelevant suffixes
-    Location = str_remove_all(Location, "\\sprovinces?\\b"),
-    Location = str_remove_all(Location, "\\sarea\\b"),
-    Location = str_remove_all(Location, "\\scities\\b"),
-    Location = str_remove_all(Location, "\\scity\\b"),
-    Location = str_remove_all(Location, "\\stown\\b"),
-    Location = str_remove_all(Location, "\\svillage\\b"),
-    Location = str_remove_all(Location, "\\sand\\b"),
-    Location = str_remove_all(Location, "\\sdistrict\\b"),
-    Location = str_remove_all(Location, "\\sHoofdtedelijk Gewes\\b"),
-    Location = str_remove_all(Location, "\\s*\\([^)]*\\)")  # remove parentheses and content
+    Location = str_remove_all(Location, regex("\\sprovinces?\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\sareas?\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\scities\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\scity\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\stowns?\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\svillage[s]?\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\sand\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\sdistricts?\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\sHoofdtedelijk Gewes\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\smunicipalit(?:y|ies)\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\sregions?\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\sdepartments?\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\sIsl\\.?\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, regex("\\sLaen\\b", ignore_case = TRUE)),
+    Location = str_remove_all(Location, "\\s*\\([^)]*\\)")  # Remove parentheses and content
   ) %>%
   separate_rows(Location, sep = ",\\s*") %>%
   mutate(
     Location = str_trim(Location),
-    Location = paste(Location, ISO2)  # 💥 Append country code to location
+    Location = paste(Location, ISO2)  # Append country code to location
   ) %>%
   distinct(Location) %>%
   pull(Location)
@@ -118,34 +123,47 @@ end_time <- Sys.time()
 execution_time <- end_time - start_time
 print(execution_time)
 
+# Check which rows are faulty ####
+improper = cache %>% filter(is.na(latitude))
+
 # Pre-process the 'Location' column in fil_geo
 fil_geo_clean <- fil_geo %>%
   mutate(row_id = row_number()) %>%  # Track original row IDs for later merging
   mutate(location = Location %>%
            str_replace_all(",\\s*", ", ") %>%           # Ensure consistent spacing after commas
-           str_replace_all(";/", ", ") %>%                   # Handle separators like ";" and "/"
-           str_replace_all(";", ", ") %>%                    # Split entries on ";"
-           str_replace_all("/", ", ") %>%                    # Split entries on "/"
+           str_replace_all(";/", ", ") %>%              # Handle separators like ";" and "/"
+           str_replace_all(";", ", ") %>%               
+           str_replace_all("/", ", ") %>%               
+           
+           # Common misspellings
            str_replace_all("Zuit-holland", "Zuid-Holland") %>%
            str_replace_all("South Holland", "Zuid-Holland") %>%
            str_replace_all("\\bGroninge\\b", "Groningen") %>%
            str_replace_all("Totterdam", "Rotterdam") %>%
            str_replace_all("Westhoerk", "Westhoek") %>%
            str_replace_all("\\bHal\\b", "Halle") %>%
-           str_remove_all("\\sprovinces?\\b") %>%
-           str_remove_all("\\sarea\\b") %>%
-           str_remove_all("\\scities\\b") %>%
-           str_remove_all("\\scity\\b") %>%
-           str_remove_all("\\stown\\b") %>%
-           str_remove_all("\\svillage\\b") %>%
-           str_remove_all("\\sand\\b") %>%
-           str_remove_all("\\sdistrict\\b") %>%
-           str_remove_all("\\sHoofdtedelijk Gewes\\b") %>%
-           str_remove_all("\\s*\\([^)]*\\)")) %>% 
-  separate_rows(location, sep = ",\\s*") %>%                  # Split on all commas (after cleaning)
+           
+           # Remove suffixes, descriptors, etc.
+           str_remove_all(regex("\\sprovinces?\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\sareas?\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\scities\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\scity\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\stowns?\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\svillage[s]?\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\sand\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\sdistricts?\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\smunicipalit(?:y|ies)\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\sregions?\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\sdepartments?\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\sIsl\\.?\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\sLaen\\b", ignore_case = TRUE)) %>%
+           str_remove_all(regex("\\sHoofdtedelijk Gewes\\b", ignore_case = TRUE)) %>%
+           str_remove_all("\\s*\\([^)]*\\)")  # Remove parentheses and content
+  ) %>%
+  separate_rows(location, sep = ",\\s*") %>%  # Split on commas
   mutate(
     location = str_trim(location),
-    location = paste(location, ISO2)  # Final step: append ISO2
+    location = paste(location, ISO2)  # Append ISO2
   )
 
 # df = cbind.data.frame(unique_locations,cache)
@@ -191,7 +209,8 @@ replacement_data = nuts3 %>%
 
 fil_geo_with_nuts3 = fil_geo_with_nuts3 %>%
   st_drop_geometry() %>%
-  rows_update(replacement_data, by = "location")
+  rows_update(replacement_data, by = "location") %>% 
+  filter(CNTR_CODE %in% unique(fil_geo$ISO2))
 
 # Connecting to Eurostat ####
 library(eurostat)
@@ -245,8 +264,7 @@ final_exposure_index <- exposure_data %>%
     exposure_index_avg = mean(exposure_index, na.rm = TRUE),
     .groups = "drop"
   ) %>% 
-  filter(!is.na(exposure_index_avg)) %>% 
-  filter(substr(NUTS_ID, 1, 2) %in% c("BE", "NL", "LU")) # This means there are some problems with geocoding... should work on that. I think also adding the ISO code into the search would make it better.
+  filter(!is.na(exposure_index_avg))
 
 ## Damage ####
 # Calculated as the sum of the damage from each event divided by the population.
@@ -290,16 +308,28 @@ avg_damage_per_capita <- damagePC %>%
   )
 
 ## Population Growth ####
-# Find the population growth rate between 2002 and 2024.
-pop_growth <- pop_data %>%
-  filter(year %in% c(2002, 2022)) %>%
-  select(NUTS_ID, year, population) %>%
-  pivot_wider(names_from = year, values_from = population, names_prefix = "pop_") %>%
+# Find the population growth rate between 2002 and 2024 (for most regions)
+# For some regions, it is then calculated based 
+
+# Get earliest population for each NUTS_ID
+pop_start <- pop_data %>%
+  group_by(NUTS_ID) %>%
+  filter(!is.na(population)) %>%
+  slice_min(year, with_ties = FALSE) %>%
+  rename(start_year = year, pop_start = population)
+
+# Get population in 2022
+pop_end <- pop_data %>%
+  filter(year == 2022) %>%
+  select(NUTS_ID, pop_end = population)
+
+pop_growth <- pop_start %>%
+  left_join(pop_end, by = "NUTS_ID") %>%
   mutate(
-    growth_abs = pop_2022 - pop_2002,
-    growth_pct = (pop_2022 - pop_2002) / pop_2002
-  ) %>% 
-  select(NUTS_ID, growth_pct)
+    growth_abs = pop_end - pop_start,
+    growth_pct = (pop_end - pop_start) / pop_start
+  ) %>%
+  select(NUTS_ID, start_year, growth_pct)
 
 
 # K-Means Cluster ####
@@ -319,16 +349,16 @@ km_data <- kmclusdata %>%
 library(factoextra)
 fviz_nbclust(km_data, kmeans, method = "wss") +
   labs(title = "Elbow Method for Optimal k")
-# It seems like there are 2/3/4 clusters
+# It seems like there are 8 clusters
 
 # Use the silhouette method 
 fviz_nbclust(km_data, kmeans, method = "silhouette") +
   labs(title = "Silhouette Method for Optimal k")
-# Suggests that there are 2 clusters
+# Suggests that there are 8 clusters
 
 set.seed(123) # for reproducibility purposes
 
-kmeans_result <- kmeans(km_data, centers = 2, nstart = 25)
+kmeans_result <- kmeans(km_data, centers = 8, nstart = 25)
 
 # Add cluster labels back to original data
 kmclusdata <- kmclusdata %>%
@@ -337,58 +367,255 @@ kmclusdata <- kmclusdata %>%
 # Preparing Data for discriminant analysis ####
 
 # Getting data from Eurostat
-pop_density_data <- get_eurostat("tgs00024", time_format = "num") %>%
-  rename(NUTS_ID = geo, year = TIME_PERIOD, pop_density = values) %>%
-  filter(!is.na(pop_density)) %>% 
-  filter(year == 2022) %>% 
-  select(NUTS_ID,pop_density)
-internet_access <- get_eurostat("tgs00047", time_format = "num") %>%
-  rename(NUTS_ID = geo, year = TIME_PERIOD, internet_access_pct = values) %>%
-  filter(!is.na(internet_access_pct)) %>% 
-  filter(year == 2024) %>% 
-  select(NUTS_ID,internet_access_pct)
-poverty_rate <- get_eurostat("tgs00103", time_format = "num") %>%
-  rename(NUTS_ID = geo, year = TIME_PERIOD, poverty_pct = values) %>%
-  filter(!is.na(poverty_pct)) %>% 
-  filter(year == 2021) %>% 
-  select(NUTS_ID,poverty_pct)
-road_density <- get_eurostat("tran_r_net", time_format = "num") %>%
-  rename(NUTS_ID = geo, year = TIME_PERIOD, road_density_km = values) %>%
-  filter(!is.na(road_density_km)) %>% 
-  filter(tra_infr == "MWAY") %>% 
-  filter(unit == "KM_TKM2") %>% 
-  filter(year == 2022) %>% 
-  select(NUTS_ID,road_density_km)
-gini <- get_eurostat("ilc_di11_r", time_format = "num") %>%
-  filter(TIME_PERIOD == 2021) %>%
-  rename(NUTS_ID = geo, year = TIME_PERIOD, gini_coeff = values) %>% 
-  select(NUTS_ID, year, gini_coeff)
-# gini doesn't work for Belgium because of incomplete data.
+# Since not every year has the full data, we will have to choose the year that has the most data for each variable and go from there. This would then lead to 
 
-benelux_hdi_2022 <- read.csv("~/Documents/Resilience Validation/benelux_hdi_2022.csv")
+get_best_year_data <- function(table_code, value_name, extra_filter = NULL, target_nuts) {
+  raw <- get_eurostat(table_code, time_format = "num") %>%
+    rename(NUTS_ID = geo, year = TIME_PERIOD, value = values) %>%
+    filter(NUTS_ID %in% target_nuts)
+  
+  # Ensure filter uses tidy evaluation
+  if (!rlang::quo_is_null(enquo(extra_filter))) {
+    raw <- raw %>% filter(!!enquo(extra_filter))
+  }
+  
+  # Determine year with the most data
+  best_year <- raw %>%
+    filter(!is.na(value)) %>%
+    group_by(year) %>%
+    summarise(n_available = n(), .groups = "drop") %>%
+    arrange(desc(n_available)) %>%
+    slice(1) %>%
+    pull(year)
+  
+  # Filter to best year and rename the value column
+  data_filtered <- raw %>%
+    filter(year == best_year) %>%
+    select(NUTS_ID, !!value_name := value)
+  
+  list(data = data_filtered, best_year = best_year)
+}
 
-resilience_vars <- pop_density_data %>%
-  left_join(internet_access, by = c("NUTS_ID")) %>%
-  left_join(poverty_rate, by = c("NUTS_ID")) %>%
-  left_join(road_density, by = c("NUTS_ID")) %>% 
-  left_join(gini, by = c("NUTS_ID")) %>% 
-  left_join(benelux_hdi_2022, by = c("NUTS_ID"))
+target_nuts <- unique(kmclusdata$NUTS_ID)
+
+pop_density = get_best_year_data(
+  table_code = "tgs00024",
+  value_name = "pop_density",
+  target_nuts = target_nuts
+)
+pop_density_data = pop_density$data
+message("Population density: using year ", pop_density$best_year)
+
+internet_res <- get_best_year_data(
+  table_code = "tgs00047",
+  value_name = "internet_access_pct",
+  target_nuts = target_nuts
+)
+internet_access_data <- internet_res$data
+message("Internet access: using year ", internet_res$best_year)
+
+# At-risk-of-poverty rate
+poverty_res <- get_best_year_data(
+  table_code = "tgs00103",
+  value_name = "poverty_pct",
+  target_nuts = target_nuts
+)
+poverty_data <- poverty_res$data
+message("Poverty rate: using year ", poverty_res$best_year)
+
+# Unemployment rate
+unemploy_res <- get_best_year_data(
+  table_code = "tgs00010",
+  value_name = "unemployment_pct",
+  extra_filter = (sex == "T" & isced11 == "TOTAL"),
+  target_nuts = target_nuts
+)
+unemploy_data <- unemploy_res$data
+message("Unemployment rate: using year ", unemploy_res$best_year)
+
+# Road density with extra filters
+road_res <- get_best_year_data(
+  table_code = "tran_r_net",
+  value_name = "road_density_km",
+  extra_filter = (tra_infr == "MWAY" & unit == "KM_TKM2"),
+  target_nuts = target_nuts
+)
+road_data <- road_res$data
+message("Road density: using year ", road_res$best_year)
+
+# Gini coefficient
+gini_res <- get_best_year_data(
+  table_code = "ilc_di11_r",
+  value_name = "gini_coeff",
+  target_nuts = target_nuts
+)
+gini <- gini_res$data
+
+# Female employment rate
+femalework_res <- get_best_year_data(
+  table_code = "lfst_r_lfe2emprt",
+  value_name = "womwork_pct",
+  extra_filter = age == "Y15-64" & sex == "F",
+  target_nuts = target_nuts
+)
+femalework <- femalework_res$data
+
+# % without high school (ED0-2)
+noHS_res <- get_best_year_data(
+  table_code = "edat_lfse_04",
+  value_name = "noHS_pct",
+  extra_filter = age == "Y25-64" & sex == "T" & isced11 == "ED0-2",
+  target_nuts = target_nuts
+)
+noHS <- noHS_res$data
+
+# Working population
+workingpop_res <- get_best_year_data(
+  table_code = "lfst_r_lfp2act",
+  value_name = "workingpop",
+  extra_filter = age == "Y15-64" & sex == "T",
+  target_nuts = target_nuts
+)
+workingpopulation <- workingpop_res$data
+
+# Regional GDP
+gdp_res <- get_best_year_data(
+  table_code = "tgs00005",
+  value_name = "gdppps",
+  target_nuts = target_nuts
+)
+gdp <- gdp_res$data
+
+# Household income
+income_res <- get_best_year_data(
+  table_code = "nama_10r_2hhinc",
+  value_name = "hhincome",
+  extra_filter = na_item == "B6N" & unit == "PPS_EU27_2020_HAB" & direct == "BAL",
+  target_nuts = target_nuts
+)
+income <- income_res$data
+
+# Cars per 1000
+cars_res <- get_best_year_data(
+  table_code = "tran_r_vehst",
+  value_name = "carsperthou",
+  extra_filter = vehicle == "CAR" & unit == "P_THAB",
+  target_nuts = target_nuts
+)
+cars <- cars_res$data
+
+# Agriculture employment
+farm_res <- get_best_year_data(
+  table_code = "lfst_r_lfe2en2",
+  value_name = "farmpeople",
+  extra_filter = sex == "T" & age == "Y15-74" & nace_r2 == "A",
+  target_nuts = target_nuts
+)
+farm <- farm_res$data
+
+# Artificial land
+artland_res <- get_best_year_data(
+  table_code = "lan_lcv_art",
+  value_name = "artland_pct",
+  extra_filter = landcover == "LCA" & unit == "PC",
+  target_nuts = target_nuts
+)
+artland <- artland_res$data
+
+# Below 5% and Above 75%
+pop_raw <- get_eurostat("demo_r_pjangroup", time_format = "num") %>%
+  rename(NUTS_ID = geo, year = TIME_PERIOD, value = values) %>%
+  filter(NUTS_ID %in% target_nuts, sex == "T")
+# Total pop
+totalpop <- pop_raw %>%
+  filter(age == "TOTAL") %>%
+  group_by(NUTS_ID) %>%
+  slice_max(year, with_ties = FALSE) %>%
+  rename(totalpop = value)
+# Under 5
+underfive <- pop_raw %>%
+  filter(age == "Y_LT5") %>%
+  group_by(NUTS_ID) %>%
+  slice_max(year, with_ties = FALSE) %>%
+  rename(underfivepop = value)
+# Over 75
+over75 <- pop_raw %>%
+  filter(age == "Y_GE75") %>%
+  group_by(NUTS_ID) %>%
+  slice_max(year, with_ties = FALSE) %>%
+  rename(overseventyfive = value)
+# Merge and calculate percentages
+fiveseventyfive <- underfive %>%
+  left_join(totalpop, by = "NUTS_ID") %>%
+  left_join(over75, by = "NUTS_ID") %>%
+  mutate(
+    under5_pct = (underfivepop / totalpop) * 100,
+    over75_pct = (overseventyfive / totalpop) * 100
+  ) %>%
+  select(NUTS_ID, under5_pct, over75_pct)
+
+resilience_vars <- fiveseventyfive %>%
+  left_join(pop_density_data,        by = "NUTS_ID") %>%
+  left_join(internet_access_data,    by = "NUTS_ID") %>%
+  left_join(poverty_data,            by = "NUTS_ID") %>%
+  left_join(unemploy_data,           by = "NUTS_ID") %>%
+  left_join(road_data,               by = "NUTS_ID") %>%
+  left_join(gini,                    by = "NUTS_ID") %>%
+  left_join(femalework,              by = "NUTS_ID") %>%
+  left_join(noHS,                    by = "NUTS_ID") %>%
+  left_join(workingpopulation,       by = "NUTS_ID") %>%
+  left_join(gdp,                     by = "NUTS_ID") %>%
+  left_join(income,                  by = "NUTS_ID") %>%
+  left_join(cars,                    by = "NUTS_ID") %>%
+  left_join(farm,                    by = "NUTS_ID") %>%
+  left_join(artland,                 by = "NUTS_ID")
+
+# Check how many complete rows that we have
+summary(complete.cases(resilience_vars))
+
+# Check which columns have no missing values
+resilience_vars %>%
+  ungroup() %>%
+  select(where(is.numeric)) %>%
+  summarise(across(everything(), ~ all(!is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "complete") %>%
+  filter(complete == TRUE)
+
+# Check which columns have missing values
+resilience_vars %>%
+  ungroup() %>%  # 💥 This clears any previous groupings
+  select(where(is.numeric)) %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "n_missing") %>%
+  filter(n_missing > 0) %>%
+  arrange(desc(n_missing))
+
+# Look at which entries are missing per variable (the small ones)
+resilience_vars %>%
+  select(NUTS_ID,farmpeople,artland_pct,carsperthou) %>% 
+  pivot_longer(-NUTS_ID, names_to = "variable", values_to = "value") %>%
+  filter(is.na(value)) %>%
+  arrange(NUTS_ID, variable)
 
 discdata = kmclusdata %>% 
   select(NUTS_ID,cluster) %>% 
   left_join(resilience_vars,by = "NUTS_ID") %>% 
-  mutate(poverty_pct = if_else(NUTS_ID == "LU00", 18.8, poverty_pct))
+  mutate(poverty_pct = if_else(NUTS_ID == "LU00", 18.8, poverty_pct)) %>% 
+  mutate(farmpeople = if_else(NUTS_ID == "BE10", 0.2, farmpeople)) 
 
 # Discriminant Analysis ####
 
-# Without gini coefficient
-lda_model <- MASS::lda(cluster ~ pop_density + internet_access_pct + poverty_pct + road_density_km  + shdi_score, data = discdata)
+lda_model <- MASS::lda(cluster ~ under5_pct + over75_pct + pop_density + unemployment_pct + womwork_pct + noHS_pct + workingpop + gdppps + hhincome, data = discdata)
 lda_pred <- predict(lda_model)
 discdata <- discdata %>% mutate(predicted_cluster = lda_pred$class)
 table(Actual = discdata$cluster, Predicted = discdata$predicted_cluster)
 mean(discdata$cluster == discdata$predicted_cluster)
 
-# Overall accuracy 86.4%
+diag_mat <- diag(table(discdata$cluster, discdata$predicted_cluster))
+row_totals <- rowSums(table(discdata$cluster, discdata$predicted_cluster))
+round(diag_mat / row_totals * 100, 1)
+
+# Overall accuracy 67.9%
 
 discdata$LD1 <- lda_pred$x[,1]
 ggplot(discdata, aes(x = LD1, fill = factor(cluster))) +
@@ -403,3 +630,56 @@ ggplot(discdata, aes(x = LD1, fill = as.factor(cluster))) +
 
 lda_model$scaling
 
+# Stepwise Discriminant Analysis ####
+# library(klaR)
+
+discdata_clean <- discdata %>%
+  select(-NUTS_ID,-year,-gini_coeff) %>% 
+  filter(if_all(where(is.numeric), ~ !is.na(.))) %>%
+  mutate(cluster = as.factor(cluster))
+
+nrow(discdata_clean)        # Number of rows in full dataset
+length(discdata_clean$cluster)  # Number of group labels
+anyNA(discdata_clean)   
+summary(discdata_clean$cluster)
+
+predictors <- discdata_clean %>% select(-cluster)
+grouping <- discdata_clean$cluster
+
+step_model <- klaR::stepclass(
+  x = discdata_clean %>% select(-cluster),
+  grouping = discdata_clean$cluster,
+  method = "lda",
+  improvement = 0,
+  direction = "both",
+  verbose = TRUE
+)
+
+dim(as.data.frame(discdata_clean))[1] == length(grouping)
+
+selected_vars <- step_model$variables
+print(selected_vars)
+
+formula_final <- as.formula(paste("cluster ~", paste(selected_vars, collapse = "+")))
+
+lda_stepwise <- MASS::lda(cluster ~ ., data = discdata_clean)
+lda_pred <- predict(lda_stepwise)
+discdata <- discdata %>% mutate(predicted_cluster = lda_pred$class)
+table(Actual = discdata$cluster, Predicted = discdata$predicted_cluster)
+mean(discdata$cluster == discdata$predicted_cluster)
+
+# Stepwise discriminant analysis yielded no improvement 
+# Thus I have used all possible variables in the discriminant analysis and now the accuracy is 100%
+
+discdata$LD1 <- lda_pred$x[,1]
+ggplot(discdata, aes(x = LD1, fill = factor(cluster))) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 15) +
+  labs(title = "LDA Separation by Cluster", x = "LD1", fill = "Cluster") +
+  theme_minimal()
+
+ggplot(discdata, aes(x = LD1, fill = as.factor(cluster))) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Linear Discriminant Function (LD1)",
+       x = "LD1", fill = "Actual Cluster")
+
+lda_stepwise$scaling
