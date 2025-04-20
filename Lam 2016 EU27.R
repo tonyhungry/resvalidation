@@ -630,6 +630,12 @@ ggplot(discdata, aes(x = LD1, fill = as.factor(cluster))) +
 
 lda_model$scaling
 
+
+
+
+
+
+
 # Stepwise Discriminant Analysis ####
 # library(klaR)
 
