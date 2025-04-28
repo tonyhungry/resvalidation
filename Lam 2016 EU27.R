@@ -358,7 +358,7 @@ fviz_nbclust(km_data, kmeans, method = "silhouette") +
 
 set.seed(123) # for reproducibility purposes
 
-kmeans_result <- kmeans(km_data, centers = 8, nstart = 25)
+kmeans_result <- kmeans(km_data, centers = 4, nstart = 25)
 
 # Add cluster labels back to original data
 kmclusdata <- kmclusdata %>%

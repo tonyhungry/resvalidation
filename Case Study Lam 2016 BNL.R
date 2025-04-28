@@ -326,6 +326,7 @@ fviz_nbclust(km_data, kmeans, method = "silhouette") +
 
 set.seed(123) # for reproducibility purposes
 
+## Setting K-Means ####
 kmeans_result <- kmeans(km_data, centers = 2, nstart = 25)
 
 # Add cluster labels back to original data
@@ -377,6 +378,7 @@ resilience_vars <- pop_density_data %>%
   left_join(gini, by = c("NUTS_ID")) %>% 
   left_join(benelux_hdi_2022, by = c("NUTS_ID"))
 
+# Jump to here if changing K
 discdata = kmclusdata %>% 
   select(NUTS_ID,cluster) %>% 
   left_join(resilience_vars,by = "NUTS_ID") %>% 
@@ -508,30 +510,31 @@ discdata_clean <- discdata %>%
   filter(if_all(where(is.numeric), ~ !is.na(.))) %>%
   mutate(cluster = as.factor(cluster))
 
-nrow(discdata_clean)        # Number of rows in full dataset
-length(discdata_clean$cluster)  # Number of group labels
-anyNA(discdata_clean)   
-summary(discdata_clean$cluster)
+# nrow(discdata_clean)        # Number of rows in full dataset
+# length(discdata_clean$cluster)  # Number of group labels
+# anyNA(discdata_clean)   
+# summary(discdata_clean$cluster)
+# 
+# predictors <- discdata_clean %>% select(-cluster)
+# grouping <- discdata_clean$cluster
+# 
+# step_model <- klaR::stepclass(
+#   x = discdata_clean %>% select(-cluster),
+#   grouping = discdata_clean$cluster,
+#   method = "lda",
+#   improvement = 0,
+#   direction = "both",
+#   verbose = TRUE
+# )
+# 
+# dim(as.data.frame(discdata_clean))[1] == length(grouping)
 
-predictors <- discdata_clean %>% select(-cluster)
-grouping <- discdata_clean$cluster
+# selected_vars <- step_model$variables
+# print(selected_vars)
 
-step_model <- klaR::stepclass(
-  x = discdata_clean %>% select(-cluster),
-  grouping = discdata_clean$cluster,
-  method = "lda",
-  improvement = 0,
-  direction = "both",
-  verbose = TRUE
-)
+# formula_final <- as.formula(paste("cluster ~", paste(selected_vars, collapse = "+")))
 
-dim(as.data.frame(discdata_clean))[1] == length(grouping)
-
-selected_vars <- step_model$variables
-print(selected_vars)
-
-formula_final <- as.formula(paste("cluster ~", paste(selected_vars, collapse = "+")))
-
+# Should write this out...
 lda_stepwise <- MASS::lda(cluster ~ ., data = discdata_clean)
 lda_pred <- predict(lda_stepwise)
 discdata <- discdata %>% mutate(predicted_cluster = lda_pred$class)
@@ -553,3 +556,126 @@ ggplot(discdata, aes(x = LD1, fill = as.factor(cluster))) +
        x = "LD1", fill = "Actual Cluster")
 
 lda_stepwise$scaling
+
+## Discriminant Without HDI ####
+nohdi = discdata_clean %>% select(-shdi_score,-health_score,-educ_score,-income_score)
+
+lda_stepwise <- MASS::lda(cluster ~ ., data = nohdi)
+lda_pred <- predict(lda_stepwise)
+discdata <- discdata %>% mutate(predicted_cluster = lda_pred$class)
+table(Actual = discdata$cluster, Predicted = discdata$predicted_cluster)
+mean(discdata$cluster == discdata$predicted_cluster)
+
+discdata$LD1 <- lda_pred$x[,1]
+ggplot(discdata, aes(x = LD1, fill = factor(cluster))) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 15) +
+  labs(title = "LDA Separation by Cluster", x = "LD1", fill = "Cluster") +
+  theme_minimal()
+
+ggplot(discdata, aes(x = LD1, fill = as.factor(cluster))) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Linear Discriminant Function (LD1)",
+       x = "LD1", fill = "Actual Cluster")
+
+lda_stepwise$scaling
+
+## Discriminant with HDI components ####
+hdicomponents = discdata_clean %>% select(-shdi_score)
+
+lda_stepwise <- MASS::lda(cluster ~ ., data = hdicomponents)
+lda_pred <- predict(lda_stepwise)
+discdata <- discdata %>% mutate(predicted_cluster = lda_pred$class)
+table(Actual = discdata$cluster, Predicted = discdata$predicted_cluster)
+mean(discdata$cluster == discdata$predicted_cluster)
+
+discdata$LD1 <- lda_pred$x[,1]
+ggplot(discdata, aes(x = LD1, fill = factor(cluster))) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 15) +
+  labs(title = "LDA Separation by Cluster", x = "LD1", fill = "Cluster") +
+  theme_minimal()
+
+ggplot(discdata, aes(x = LD1, fill = as.factor(cluster))) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Linear Discriminant Function (LD1)",
+       x = "LD1", fill = "Actual Cluster")
+
+lda_stepwise$scaling
+
+
+# Making some maps ####
+
+# K-means Maps
+kmmapdata = nuts3 %>% 
+  select(NUTS_ID,NUTS_NAME) %>% 
+  left_join(kmclusdata, by = "NUTS_ID") %>% 
+  filter(!is.na(exposure_index_avg))
+
+# Average Exposure Index 
+ggplot(kmmapdata) +
+  geom_sf(aes(fill = exposure_index_avg)) +  # Fill color based on the variable
+  scale_fill_viridis_c(option = "plasma") +   
+  labs(title = "Exposure Index Average by Region",
+       fill = "Exposure Index") +
+  theme_minimal()
+# Map of Average Damage per Capita
+ggplot(kmmapdata) +
+  geom_sf(aes(fill = avg_damage_per_capita)) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(title = "Average Damage per Capita by Region",
+       fill = "Damage per Capita") +
+  theme_minimal()
+# Map of growth_pct
+ggplot(kmmapdata) +
+  geom_sf(aes(fill = growth_pct)) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(title = "Population Growth Percentage by Region",
+       fill = "Growth (%)") +
+  theme_minimal()
+
+# Discriminant Maps
+discmapdata = nuts3 %>% 
+  select(NUTS_ID,NUTS_NAME) %>% 
+  left_join(discdata, by = "NUTS_ID") %>% 
+  filter(!is.na(cluster))
+
+# HDI
+ggplot(discmapdata) +
+  geom_sf(aes(fill = shdi_score)) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(title = "Human Development Index by Region") +
+  theme_minimal()
+# Poverty
+ggplot(discmapdata) +
+  geom_sf(aes(fill = poverty_pct)) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(title = "Population Living in Poverty",
+       fill = "%") +
+  theme_minimal()
+# Population under 5 Years Old
+ggplot(discmapdata) +
+  geom_sf(aes(fill = under5_pct)) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(title = "Population under 5 Years Old",
+       fill = "%") +
+  theme_minimal()
+# Population above 75 Years Old
+ggplot(discmapdata) +
+  geom_sf(aes(fill = over75_pct)) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(title = "Population above 75 Years Old",
+       fill = "%") +
+  theme_minimal()
+# Unemployment Rate
+ggplot(discmapdata) +
+  geom_sf(aes(fill = unemployment)) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(title = "Unemployment Rate",
+       fill = "%") +
+  theme_minimal()
+# Female Employment Participation
+ggplot(discmapdata) +
+  geom_sf(aes(fill = womwork_pct)) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(title = "Female Employment Participation",
+       fill = "%") +
+  theme_minimal()

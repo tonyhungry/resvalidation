@@ -26,7 +26,10 @@ nuts2024 = nuts2024 %>%
 shdi = read.csv("~/Documents/Resilience Validation/GDL-Subnational-HDI-data.csv")
 
 shdi = shdi %>% filter(ISO_Code %in% countrycodes) %>% 
-  rename(shdi_score = `X2022`)
+  rename(shdi_score = `Subnational.HDI`) %>% 
+  rename(health_score = `Health.index`) %>% 
+  rename(educ_score = `Educational.index.`) %>% 
+  rename(income_score = `Income.index`)
 
 exact_matches <- inner_join(shdi, nuts2024, by = c("ISO_Code", "Region"))
 shdi_unmatched <- anti_join(shdi, exact_matches, by = c("ISO_Code", "Region"))
@@ -52,25 +55,28 @@ best_matches <- fuzzy_match %>%
   ungroup()
 
 combined_matches <- bind_rows(
-  exact_matches %>% select(NUTS_ID, shdi_score),  
-  best_matches %>% select(NUTS_ID, shdi_score)    
+  exact_matches %>% select(NUTS_ID, shdi_score,health_score,educ_score,income_score),  
+  best_matches %>% select(NUTS_ID, shdi_score,health_score,educ_score,income_score)    
 )
 
 nuts2024_with_shdi <- nuts2024 %>%
   left_join(
-    combined_matches %>% select(NUTS_ID, shdi_score), 
+    combined_matches %>% select(NUTS_ID, shdi_score,health_score,educ_score,income_score), 
     by = "NUTS_ID"
   ) %>% 
-  select(`Country code`,NUTS_ID,`NUTS label`,`NUTS level`,ISO_Code,Region,shdi_score) %>% 
+  select(`Country code`,NUTS_ID,`NUTS label`,`NUTS level`,ISO_Code,Region,shdi_score,health_score,educ_score,income_score) %>% 
   filter(ISO_Code %in% c("BEL","NLD","LUX"))
 
 rowsinput <- tibble(
   NUTS_ID = c("LU00", "NL12", "BE10","NL42"),
-  shdi_score = c(0.927,0.923,0.960,0.936)
+  shdi_score = c(0.927,0.923,0.960,0.936),
+  health_score = c(0.933,0.96,0.955,0.961),
+  educ_score = c(0.9,0.901,0.926,0.905),
+  income_score = c(0.872,0.91,1,0.943)
 )
 
 nuts2024_with_shdi <- nuts2024_with_shdi %>%
-  rows_update(rowsinput, by = "NUTS_ID") %>% select(NUTS_ID,shdi_score)
+  rows_update(rowsinput, by = "NUTS_ID") %>% select(NUTS_ID,shdi_score,health_score,educ_score,income_score)
 
 write_csv(nuts2024_with_shdi, "benelux_hdi_2022.csv")
 
