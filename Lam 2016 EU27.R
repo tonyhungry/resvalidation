@@ -358,11 +358,23 @@ fviz_nbclust(km_data, kmeans, method = "silhouette") +
 
 set.seed(123) # for reproducibility purposes
 
-kmeans_result <- kmeans(km_data, centers = 4, nstart = 25)
+kmeans_result <- kmeans(km_data, centers = 8, nstart = 25)
 
 # Add cluster labels back to original data
 kmclusdata <- kmclusdata %>%
   mutate(cluster = kmeans_result$cluster)
+
+kmmapdata = nuts3 %>% 
+  select(NUTS_ID,NUTS_NAME) %>% 
+  left_join(kmclusdata, by = "NUTS_ID") %>% 
+  filter(!is.na(exposure_index_avg))
+
+ggplot(kmmapdata) +
+  geom_sf(aes(fill = as.factor(cluster))) +  # Fill color based on the variable
+  scale_fill_viridis_d(option = "plasma") +   
+  labs(title = "K-Means Clusters by Region (K=3)",
+       fill = "Cluster") +
+  theme_minimal()
 
 # Preparing Data for discriminant analysis ####
 
@@ -583,7 +595,7 @@ resilience_vars %>%
 
 # Check which columns have missing values
 resilience_vars %>%
-  ungroup() %>%  # 💥 This clears any previous groupings
+  ungroup() %>%  #
   select(where(is.numeric)) %>%
   summarise(across(everything(), ~ sum(is.na(.)))) %>%
   pivot_longer(everything(), names_to = "variable", values_to = "n_missing") %>%
@@ -615,8 +627,6 @@ diag_mat <- diag(table(discdata$cluster, discdata$predicted_cluster))
 row_totals <- rowSums(table(discdata$cluster, discdata$predicted_cluster))
 round(diag_mat / row_totals * 100, 1)
 
-# Overall accuracy 67.9%
-
 discdata$LD1 <- lda_pred$x[,1]
 ggplot(discdata, aes(x = LD1, fill = factor(cluster))) +
   geom_histogram(position = "identity", alpha = 0.5, bins = 15) +
@@ -640,33 +650,33 @@ lda_model$scaling
 # library(klaR)
 
 discdata_clean <- discdata %>%
-  select(-NUTS_ID,-year,-gini_coeff) %>% 
+  select(-NUTS_ID,-gini_coeff) %>% 
   filter(if_all(where(is.numeric), ~ !is.na(.))) %>%
   mutate(cluster = as.factor(cluster))
 
-nrow(discdata_clean)        # Number of rows in full dataset
-length(discdata_clean$cluster)  # Number of group labels
-anyNA(discdata_clean)   
-summary(discdata_clean$cluster)
-
-predictors <- discdata_clean %>% select(-cluster)
-grouping <- discdata_clean$cluster
-
-step_model <- klaR::stepclass(
-  x = discdata_clean %>% select(-cluster),
-  grouping = discdata_clean$cluster,
-  method = "lda",
-  improvement = 0,
-  direction = "both",
-  verbose = TRUE
-)
-
-dim(as.data.frame(discdata_clean))[1] == length(grouping)
-
-selected_vars <- step_model$variables
-print(selected_vars)
-
-formula_final <- as.formula(paste("cluster ~", paste(selected_vars, collapse = "+")))
+# nrow(discdata_clean)        # Number of rows in full dataset
+# length(discdata_clean$cluster)  # Number of group labels
+# anyNA(discdata_clean)   
+# summary(discdata_clean$cluster)
+# 
+# predictors <- discdata_clean %>% select(-cluster)
+# grouping <- discdata_clean$cluster
+# 
+# step_model <- klaR::stepclass(
+#   x = discdata_clean %>% select(-cluster),
+#   grouping = discdata_clean$cluster,
+#   method = "lda",
+#   improvement = 0,
+#   direction = "both",
+#   verbose = TRUE
+# )
+# 
+# dim(as.data.frame(discdata_clean))[1] == length(grouping)
+# 
+# selected_vars <- step_model$variables
+# print(selected_vars)
+# 
+# formula_final <- as.formula(paste("cluster ~", paste(selected_vars, collapse = "+")))
 
 lda_stepwise <- MASS::lda(cluster ~ ., data = discdata_clean)
 lda_pred <- predict(lda_stepwise)

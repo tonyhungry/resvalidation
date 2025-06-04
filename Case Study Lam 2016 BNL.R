@@ -333,6 +333,20 @@ kmeans_result <- kmeans(km_data, centers = 2, nstart = 25)
 kmclusdata <- kmclusdata %>%
   mutate(cluster = kmeans_result$cluster)
 
+### Mapping K-Means Cluster ####
+
+kmmapdata = nuts3 %>% 
+  select(NUTS_ID,NUTS_NAME) %>% 
+  left_join(kmclusdata, by = "NUTS_ID") %>% 
+  filter(!is.na(exposure_index_avg))
+
+ggplot(kmmapdata) +
+  geom_sf(aes(fill = as.factor(cluster))) +  # Fill color based on the variable
+  scale_fill_viridis_d(option = "plasma") +   
+  labs(title = "K-Means Clusters by Region (K=4)",
+       fill = "Cluster") +
+  theme_minimal()
+
 # Preparing Data for discriminant analysis ####
 
 # Getting data from Eurostat
@@ -601,6 +615,53 @@ ggplot(discdata, aes(x = LD1, fill = as.factor(cluster))) +
 
 lda_stepwise$scaling
 
+## Discriminant only with HDI components ####
+
+hdicomponents = discdata_clean %>% select(cluster,health_score,educ_score,income_score)
+
+lda_stepwise <- MASS::lda(cluster ~ ., data = hdicomponents)
+lda_pred <- predict(lda_stepwise)
+discdata <- discdata %>% mutate(predicted_cluster = lda_pred$class)
+table(Actual = discdata$cluster, Predicted = discdata$predicted_cluster)
+mean(discdata$cluster == discdata$predicted_cluster)
+
+discdata$LD1 <- lda_pred$x[,1]
+ggplot(discdata, aes(x = LD1, fill = factor(cluster))) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 15) +
+  labs(title = "LDA Separation by Cluster", x = "LD1", fill = "Cluster") +
+  theme_minimal()
+
+ggplot(discdata, aes(x = LD1, fill = as.factor(cluster))) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Linear Discriminant Function (LD1)",
+       x = "LD1", fill = "Actual Cluster") + 
+  theme_minimal()
+
+lda_stepwise$scaling
+
+## Discriminant only with HDI Score ####
+
+hdicomponents = discdata_clean %>% select(cluster,shdi_score)
+
+lda_stepwise <- MASS::lda(cluster ~ ., data = hdicomponents)
+lda_pred <- predict(lda_stepwise)
+discdata <- discdata %>% mutate(predicted_cluster = lda_pred$class)
+table(Actual = discdata$cluster, Predicted = discdata$predicted_cluster)
+mean(discdata$cluster == discdata$predicted_cluster)
+
+discdata$LD1 <- lda_pred$x[,1]
+ggplot(discdata, aes(x = LD1, fill = factor(cluster))) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 15) +
+  labs(title = "LDA Separation by Cluster", x = "LD1", fill = "Cluster") +
+  theme_minimal()
+
+ggplot(discdata, aes(x = LD1, fill = as.factor(cluster))) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Linear Discriminant Function (LD1)",
+       x = "LD1", fill = "Actual Cluster") + 
+  theme_minimal()
+
+lda_stepwise$scaling
 
 # Making some maps ####
 
